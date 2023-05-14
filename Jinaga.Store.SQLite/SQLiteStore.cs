@@ -256,7 +256,67 @@ namespace Jinaga.Store.SQLite
         }
 
 
-        Task<ImmutableList<Product>> IStore.Query(ImmutableList<FactReference> startReferences, Specification specification, CancellationToken cancellationToken)
+        async Task<ImmutableList<Product>> IStore.Query(ImmutableList<FactReference> startReferences, Specification specification, CancellationToken cancellationToken)
+        {
+            // Load type and role IDs
+            ImmutableDictionary<string, int> factTypes = await LoadFactTypesFromSpecification(specification, cancellationToken);
+            ImmutableDictionary<int, ImmutableDictionary<string, int>> roleMap = await LoadRolesFromSpecification(specification, factTypes, cancellationToken);
+
+            // If any of the start facts are not known types, the specification cannot be satisfied
+            if (startReferences.Any(r => !factTypes.ContainsKey(r.Type)))
+            {
+                return ImmutableList<Product>.Empty;
+            }
+
+            // Produce a SqlQueryTree from the specification
+            SqlQueryTree sqlQueryTree = ResultSqlFromSpecification(startReferences, specification, factTypes, roleMap);
+
+            // Execute all SQL queries and produce a ResultSetTree
+            ResultSetTree resultSetTree = await ExecuteSqlQueryTree(sqlQueryTree, cancellationToken);
+
+            // Convert the ResultSetTree to a list of Products
+            var givenProduct = specification.Given
+                .Select((label, index) =>
+                    (label.Name, Element: (Element)new SimpleElement(startReferences[index])))
+                .Aggregate(Product.Empty, (product, pair) => product.With(pair.Name, pair.Element));
+            ImmutableList<Product> products = sqlQueryTree.ResultsToProducts(resultSetTree, givenProduct);
+            return products;
+        }
+
+        private Task<ImmutableDictionary<string, int>> LoadFactTypesFromSpecification(Specification specification, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        private Task<ImmutableDictionary<int, ImmutableDictionary<string, int>>> LoadRolesFromSpecification(Specification specification, ImmutableDictionary<string, int> factTypes, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        private SqlQueryTree ResultSqlFromSpecification(ImmutableList<FactReference> startReferences, Specification specification, ImmutableDictionary<string, int> factTypes, ImmutableDictionary<int, ImmutableDictionary<string, int>> roleMap)
+        {
+            ResultDescriptionBuilder descriptionBuilder = new ResultDescriptionBuilder(factTypes, roleMap);
+            ResultDescription description = descriptionBuilder.Build(startReferences, specification);
+
+            if (!description.QueryDescription.IsSatisfiable())
+            {
+                return null;
+            }
+            return CreateSqlQueryTree(description, 0);
+        }
+
+        private SqlQueryTree CreateSqlQueryTree(ResultDescription description, int parentFactIdLength)
+        {
+            SpecificationSqlQuery sqlQuery = description.QueryDescription.GenerateResultSqlQuery();
+            var childQueries = description.ChildResultDescriptions
+                .Select(child => KeyValuePair.Create(
+                    child.Key,
+                    CreateSqlQueryTree(child.Value, description.QueryDescription.OutputLength())))
+                .ToImmutableDictionary();
+            return new SqlQueryTree(sqlQuery, parentFactIdLength, childQueries);
+        }
+
+        private Task<ResultSetTree> ExecuteSqlQueryTree(SqlQueryTree sqlQueryTree, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
         }
