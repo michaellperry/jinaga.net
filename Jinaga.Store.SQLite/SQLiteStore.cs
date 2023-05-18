@@ -2,6 +2,9 @@
 using Jinaga.Products;
 using Jinaga.Projections;
 using Jinaga.Services;
+using Jinaga.Store.SQLite.Builder;
+using Jinaga.Store.SQLite.Description;
+using Jinaga.Store.SQLite.Generation;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -302,18 +305,7 @@ namespace Jinaga.Store.SQLite
             {
                 return null;
             }
-            return CreateSqlQueryTree(description, 0);
-        }
-
-        private SqlQueryTree CreateSqlQueryTree(ResultDescription description, int parentFactIdLength)
-        {
-            SpecificationSqlQuery sqlQuery = description.QueryDescription.GenerateResultSqlQuery();
-            var childQueries = description.ChildResultDescriptions
-                .Select(child => KeyValuePair.Create(
-                    child.Key,
-                    CreateSqlQueryTree(child.Value, description.QueryDescription.OutputLength())))
-                .ToImmutableDictionary();
-            return new SqlQueryTree(sqlQuery, parentFactIdLength, childQueries);
+            return SqlGenerator.CreateSqlQueryTree(description, 0);
         }
 
         private Task<ResultSetTree> ExecuteSqlQueryTree(SqlQueryTree sqlQueryTree, CancellationToken cancellationToken)
